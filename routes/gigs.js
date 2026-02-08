@@ -38,6 +38,7 @@ router.get('/', auth, async (req, res) => {
 
     const gigs = await Gig.find(query).sort({ createdAt: -1 });
     res.json(gigs);
+
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

@@ -8,6 +8,7 @@ router.get('/:_id', auth, async (req, res) => {
   try {
     const user = await User.findOne({ _id: req.params._id });
     res.json(user);
+   
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

@@ -15,6 +15,16 @@ const gigSchema = new mongoose.Schema({
     trim: true,
     required: true
   },
+  customerName: {
+    type: String,
+    trim: true,
+    required: true
+  },
+  salesEng: {
+    type: String,
+    trim: true,
+    required: true
+  },
   workOrder: {
     type: String,
     trim: true

@@ -10,8 +10,6 @@ router.post('/register', async (req, res) => {
   try {
     const { fullName, email, password, role, station } = req.body;
 
-    console.log(req.body)
-
     const existingUser = await User.findOne({ email });
     if (existingUser) {
       return res.status(400).json({ error: 'The email is already registered' });
@@ -105,6 +103,7 @@ router.post('/login', async (req, res) => {
 // get current user
 router.get('/me', auth, async (req, res) => {
   try {
+   
     const user = await User.findById(req.userId).select('-password');
     res.json({
       id: user._id,
@@ -114,6 +113,7 @@ router.get('/me', auth, async (req, res) => {
       station: user.station,
       created_at: user.createdAt
     });
+    console.log(user,'get me')
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
