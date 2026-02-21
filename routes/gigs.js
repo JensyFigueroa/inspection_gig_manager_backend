@@ -269,4 +269,55 @@ router.get('/:id/comments', auth, async (req, res) => {
   }
 });
 
+router.get('/report', auth, async(req, res) => {
+  try {
+    const { start, end } = req.query;
+
+    if (!start || !end) {
+      return res.status(400).json({
+        error: "Both start and end dates are required."
+      });
+    }
+
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+
+    const gigs = await Gig.find({
+      updatedAt: { $gte: startDate, $lte: endDate }
+    }).lean();
+
+    const trucksMap = {};
+
+    gigs.forEach(gig => {
+      const key = `${gig.truckNumber|gig.customerName}`;
+      if (!trucksMap[key]) {
+        trucksMap[key] = {
+          truckNumber: gig.truckNumber,
+          customerName: gig.customerName,
+          stationCounts: {}
+        }
+      }
+
+      const station = gig.station;
+      trucksMap[key].stationCounts[station] = (trucksMap[key].stationCounts[station] || 0) + 1;
+    });
+
+    const trucks = Object.values(trucksMap).map(t => ({
+      truckNumber: t.truckNumber,
+      customerName: t.customerName,
+      stationCounts: t.stationCounts
+    }));
+
+    const grandTotal = gigs.length;
+
+    res.json({
+      trucks,
+      grandTotal
+    });
+
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 module.exports = router;

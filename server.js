@@ -1,7 +1,11 @@
 const express = require('express');
 const mongoose = require('mongoose');
 const cors = require('cors');
+
 require('dotenv').config();
+
+// Includes
+const createDefaultAdminUser = require('./inc/createDefaultAdmin');
 
 const authRoutes = require('./routes/auth');
 const gigRoutes = require('./routes/gigs');
@@ -17,8 +21,10 @@ app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // Connect to MongoDB (WITHOUT the deprecated options)
 mongoose.connect(process.env.MONGODB_URI)
-.then(() => console.log('✅ Conect to MongoDB'))
-.catch(err => console.error('❌ MongoDB connection error:', err));
+.then(() => {
+  console.log('✅ Conect to MongoDB')
+  createDefaultAdminUser();
+}).catch(err => console.error('❌ MongoDB connection error:', err));
 
 // Rutas
 app.use('/api/auth', authRoutes);

@@ -1,0 +1,50 @@
+@access_token = eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJ1c2VySWQiOiI2OThkNTlkNzcwZjBlYjlkNWExNmIzMDEiLCJlbWFpbCI6ImFkbWluQGV4YW1wbGUuY29tIiwiZnVsbE5hbWUiOiJBZG1pbiBVc2VyIiwicm9sZSI6ImFkbWluIiwiaWF0IjoxNzcwODcxNTkzLCJleHAiOjE3NzE0NzYzOTN9.fGIQ4RY0_-psQwBP-RuyyZyeABlDbUQvW4e6QA07oF8
+
+POST http://localhost:8001/api/users HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer {{access_token}}
+
+{
+  "fullName": "John Doe",
+  "email": "johndoe@example.com",
+  "password": "securePassword123",
+  "role": "admin",
+  "station": "Station 1"
+}
+
+
+POST http://localhost:8001/api/users HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer {{access_token}}
+
+{
+  "fullName": "Jane Smith",
+  "email": "janesmith@example.com",
+  "password": "securePassword456",
+  "role": "qc",
+  "station": "Station 2"
+}
+
+POST http://localhost:8001/api/users HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer {{access_token}}
+
+{
+  "fullName": "Alice Johnson",
+  "email": "alicejohnson@example.com",
+  "password": "securePassword789",
+  "role": "lead",
+  "station": "Station 3"
+}
+
+POST http://localhost:8001/api/users HTTP/1.1
+Content-Type: application/json
+Authorization: Bearer {{access_token}}
+
+{
+  "fullName": "Bob Brown",
+  "email": "bobbrown@example.com",
+  "password": "securePassword012",
+  "role": "worker",
+  "station": "Station 4"
+}
