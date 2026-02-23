@@ -38,6 +38,17 @@ const gigSchema = new mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Inspector'
   },
+
+  inspectionStatus:{
+    type: String,
+    enum: ['','approved', 'rejected'],
+    default: ''
+  },
+  // Information about who started the gig
+  approvedBy: {
+    inspectorId:  mongoose.Schema.Types.ObjectId,
+    approvedAt: Date
+  },
   // Information about who started the gig
   startedBy: {
     workerNumber: String,

@@ -6,7 +6,7 @@ const auth = require('../middleware/auth');
 // create operator  
 router.post('/', auth, async (req, res) => {
   try {
-    const { employeeNumber, fullName, position } = req.body;
+    const { employeeNumber, fullName, position, station } = req.body;
     
     // Cheack if it already exists
     const existing = await Operator.findOne({ employeeNumber });
@@ -14,7 +14,7 @@ router.post('/', auth, async (req, res) => {
       return res.status(400).json({ error: 'Operator with this employee number already exists' });
     }
 
-    const operator = new Operator({ employeeNumber, fullName, position });
+    const operator = new Operator({ employeeNumber, fullName, position, station });
     await operator.save();
     res.status(201).json(operator);
   } catch (error) {

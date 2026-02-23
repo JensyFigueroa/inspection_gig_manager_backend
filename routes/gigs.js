@@ -4,6 +4,97 @@ const Gig = require('../models/Gig');
 const Comment = require('../models/Comment');
 const auth = require('../middleware/auth');
 
+// GET DPU Tracker data (public endpoint for the tracker table)
+router.get('/dpu-tracker', async (req, res) => {
+  try {
+    const { startDate, endDate } = req.query;
+    
+    // Build query with date filters
+    let query = {};
+    if (startDate || endDate) {
+      query.createdAt = {};
+      if (startDate) {
+        query.createdAt.$gte = new Date(startDate);
+        console.log(query.createdAt.$gte = new Date(startDate))
+      }
+      if (endDate) {
+        const end = new Date(endDate);
+        end.setHours(23, 59, 59, 999);
+        query.createdAt.$lte = end;
+        console.log(query.createdAt.$lte = end)
+      }
+    }
+    
+    // Get filtered gigs
+    const gigs = await Gig.find(query);
+    
+    // Get unique trucks
+    const trucksMap = new Map();
+    gigs.forEach(gig => {
+      if (gig.truckNumber && !trucksMap.has(gig.truckNumber)) {
+        trucksMap.set(gig.truckNumber, {
+          truckNumber: gig.truckNumber,
+          customerName: gig.customerName || '',
+          day: ''
+        });
+      }
+    });
+    
+    // Convert to array and assign days
+    const dayLabels = ['Mon', 'Tue', 'Wed', 'Thur'];
+    const trucks = Array.from(trucksMap.values()).slice(0, 4);
+    trucks.forEach((truck, idx) => {
+      truck.day = dayLabels[idx] || '';
+    });
+    
+    // Fill remaining slots if less than 4 trucks
+    while (trucks.length < 4) {
+      trucks.push({ truckNumber: '', customerName: '', day: dayLabels[trucks.length] || '' });
+    }
+    
+    // Define stations
+    const stations = [
+      'Station 1', 'Station 2', 'Station 3', 'Station 4', 'Station 5', 'Station 6',
+      'Electrico T/S', 'Harness', 'Prep', 'Cab Shop', 'Body Shop', 'Paint'
+    ];
+    
+    // Count gigs by station and truck
+    const gigsByStation = {};
+    stations.forEach(station => {
+      gigsByStation[station] = {};
+      trucks.forEach(truck => {
+        if (truck.truckNumber) {
+          gigsByStation[station][truck.truckNumber] = 0;
+        }
+      });
+    });
+    
+    // Count gigs
+    gigs.forEach(gig => {
+      const station = gig.station;
+      const truckNum = gig.truckNumber;
+      if (gigsByStation[station] && truckNum) {
+        gigsByStation[station][truckNum] = (gigsByStation[station][truckNum] || 0) + 1;
+      }
+    });
+    
+    // Calculate week starting date
+    const now = new Date();
+    const dayOfWeek = now.getDay();
+    const diff = now.getDate() - dayOfWeek + (dayOfWeek === 0 ? -6 : 1);
+    const monday = new Date(now.setDate(diff));
+    const weekStarting = `${monday.getMonth() + 1}/${monday.getDate()}/${monday.getFullYear()}`;
+    
+    res.json({
+      weekStarting,
+      trucks,
+      gigsByStation
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 // Create gig (QC only)
 router.post('/', auth, async (req, res) => {
   try {
@@ -15,9 +106,11 @@ router.post('/', auth, async (req, res) => {
       ...req.body,
       createdBy: req.userId
     });
+    console.log(gig)
     await gig.save();
     res.status(201).json(gig);
   } catch (error) {
+    console.log('POST')
     res.status(400).json({ error: error.message });
   }
 });
@@ -180,6 +273,34 @@ router.post('/:id/block', auth, async (req, res) => {
   }
 });
 
+// Approved gig (QC)
+router.post('/:id/approved', auth, async (req, res) => {
+  try {
+    const { workerNumber, workerName } = req.body;
+
+
+    const gig = await Gig.findById(req.params.id);
+    
+    if (!gig) {
+      return res.status(404).json({ error: 'Gig not found' });
+    }
+
+    if (gig.status !== 'completed') {
+      return res.status(400).json({ error: 'Only gigs in progress can be completed' });
+    }
+
+    gig.inspectionStatus = 'approved';
+    gig.approvedBy = {
+      approvedAt: new Date()
+    };
+
+    await gig.save();
+    res.json(gig);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 // Update gig
 router.put('/:id', auth, async (req, res) => {
   try {
@@ -213,6 +334,7 @@ router.put('/:id', auth, async (req, res) => {
     
     res.json(gig);
   } catch (error) {
+    console.log('here', error.message)
     res.status(400).json({ error: error.message });
   }
 });
@@ -268,5 +390,7 @@ router.get('/:id/comments', auth, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+
 
 module.exports = router;

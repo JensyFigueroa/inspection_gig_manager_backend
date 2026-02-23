@@ -19,6 +19,10 @@ const operatorSchema = new mongoose.Schema({
     trim: true
   },
 
+  station: {
+    type: String,
+  },
+
   createdAt: {
     type: Date,
     default: Date.now
