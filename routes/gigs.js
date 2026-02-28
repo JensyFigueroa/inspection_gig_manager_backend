@@ -301,6 +301,37 @@ router.post('/:id/approved', auth, async (req, res) => {
   }
 });
 
+// Rejected gig (QC)
+router.post('/:id/rejected', auth, async (req, res) => {
+  try {
+
+    console.log(req.body)
+    const { workerNumber, workerName } = req.body;
+
+
+    const gig = await Gig.findById(req.params.id);
+
+    
+    if (!gig) {
+      return res.status(404).json({ error: 'Gig not found' });
+    }
+
+    if (gig.status !== 'completed') {
+      return res.status(400).json({ error: 'Only gigs in progress can be completed' });
+    }
+    gig.status = 'pending';
+    gig.inspectionStatus = 'rejected';
+    gig.rejectedBy = {
+      rejectedAt: new Date()
+    };
+
+    await gig.save();
+    res.json(gig);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 // Update gig
 router.put('/:id', auth, async (req, res) => {
   try {
@@ -334,7 +365,7 @@ router.put('/:id', auth, async (req, res) => {
     
     res.json(gig);
   } catch (error) {
-    console.log('here', error.message)
+   
     res.status(400).json({ error: error.message });
   }
 });
