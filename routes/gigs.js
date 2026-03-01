@@ -9,16 +9,18 @@ router.get("/dpu-tracker", async (req, res) => {
   try {
     const { startDate } = req.query;
 
-    if (!startDate) return res.status(400).json({ message: "startDate is required" });
+    if (!startDate)
+      return res.status(400).json({ message: "startDate is required" });
 
     // Parseamos YYYY-MM-DD
     const parts = startDate.split("-");
-    if (parts.length !== 3) return res.status(400).json({ message: "Invalid startDate" });
+    if (parts.length !== 3)
+      return res.status(400).json({ message: "Invalid startDate" });
 
     const selectedDate = new Date(
       parseInt(parts[0]),
       parseInt(parts[1]) - 1,
-      parseInt(parts[2])
+      parseInt(parts[2]),
     );
     selectedDate.setHours(0, 0, 0, 0);
 
@@ -35,7 +37,9 @@ router.get("/dpu-tracker", async (req, res) => {
     thursday.setHours(23, 59, 59, 999);
 
     // Traer gigs de lunes a jueves
-    const gigs = await Gig.find({ createdAt: { $gte: monday, $lte: thursday } });
+    const gigs = await Gig.find({
+      createdAt: { $gte: monday, $lte: thursday },
+    });
 
     // Si no hay gigs, devolvemos un array vacío
     if (gigs.length === 0) {
@@ -43,18 +47,18 @@ router.get("/dpu-tracker", async (req, res) => {
         weekStarting: `${monday.getMonth() + 1}/${monday.getDate()}/${monday.getFullYear()}`,
         trucks: [],
         gigsByStation: {},
-        message: "No gigs found for this week"
+        message: "No gigs found for this week",
       });
     }
 
     // Trucks únicos
     const trucksMap = new Map();
-    gigs.forEach(gig => {
+    gigs.forEach((gig) => {
       if (gig.truckNumber && !trucksMap.has(gig.truckNumber)) {
         trucksMap.set(gig.truckNumber, {
           truckNumber: gig.truckNumber,
           customerName: gig.customerName || "",
-          day: ""
+          day: "",
         });
       }
     });
@@ -67,38 +71,95 @@ router.get("/dpu-tracker", async (req, res) => {
 
     // Definir estaciones
     const stations = [
-      "Station 1","Station 2","Station 3","Station 4","Station 5","Station 6",
-      "Electrico T/S","Harness","Prep","Cab Shop","Body Shop","Paint"
+      "Station 1",
+      "Station 2",
+      "Station 3",
+      "Station 4",
+      "Station 5",
+      "Station 6",
+      "Electrico T/S",
+      "Harness",
+      "Prep",
+      "Cab Shop",
+      "Body Shop",
+      "Paint",
     ];
 
     // Inicializar conteo de gigs
     const gigsByStation = {};
-    stations.forEach(station => {
+    stations.forEach((station) => {
       gigsByStation[station] = {};
-      trucks.forEach(truck => {
+      trucks.forEach((truck) => {
         gigsByStation[station][truck.truckNumber] = 0;
       });
     });
 
     // Contar gigs por estación y truck
-    gigs.forEach(gig => {
+    gigs.forEach((gig) => {
       const station = gig.station;
       const truckNum = gig.truckNumber;
       if (gigsByStation[station] && truckNum) {
-        gigsByStation[station][truckNum] = (gigsByStation[station][truckNum] || 0) + 1;
+        gigsByStation[station][truckNum] =
+          (gigsByStation[station][truckNum] || 0) + 1;
       }
     });
 
-    const formatDate = date => `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
+    const formatDate = (date) =>
+      `${date.getMonth() + 1}/${date.getDate()}/${date.getFullYear()}`;
 
     res.json({
       weekStarting: formatDate(monday),
       trucks,
-      gigsByStation
+      gigsByStation,
     });
-
   } catch (error) {
     console.error(error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Create gig (QC only)
+router.post("/", auth, async (req, res) => {
+  try {
+    if (req.userRole !== "qc") {
+      return res.status(403).json({ error: "Only QC can create gigs" });
+    }
+
+    const gig = new Gig({
+      ...req.body,
+      createdBy: req.userId,
+    });
+    console.log(gig);
+    await gig.save();
+    res.status(201).json(gig);
+  } catch (error) {
+    console.log("POST");
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// Get gigs based on role
+router.get("/", auth, async (req, res) => {
+  try {
+    let query = {};
+
+    // QC sees all gigs
+    if (req.userRole === "qc") {
+      query = {};
+    }
+    // Lead y Worker only see gigs from their station
+    else if (req.userRole === "lead" || req.userRole === "worker") {
+      query = { station: req.userStation };
+    }
+
+    const gigs = await Gig.find(query).sort({ createdAt: -1 });
+
+    const [comments] = await Promise.all([
+      Comment.find({ gigId: { $in: gigs.map((g) => g._id) } }),
+    ]);
+
+    res.json({ gigs, comments });
+  } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
