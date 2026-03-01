@@ -31,7 +31,7 @@ const gigSchema = new mongoose.Schema({
   },
   status: {
     type: String,
-    enum: ['pending', 'in-progress', 'completed', 'blocked'],
+    enum: ['pending', 'in-progress', 'completed', 'paused'],
     default: 'pending'
   },
   inspectorId: {
@@ -61,18 +61,18 @@ const gigSchema = new mongoose.Schema({
     workerName: String,
     completedAt: Date
   },
-  // Information about blocking the gig
-  blockedInfo: {
+  // Information about pausing the gig
+  pausedInfo: {
     reason: {
       type: String,
       enum: ['missing-parts', 'depends-previous-station', 'other']
     },
     note: String,
-    blockedBy: {
+    pausedBy: {
       workerNumber: String,
       workerName: String
     },
-    blockedAt: Date
+    pausedAt: Date
   },
   employeeNumber: {
     type: Number,

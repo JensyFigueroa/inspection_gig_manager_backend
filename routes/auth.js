@@ -113,7 +113,6 @@ router.get('/me', auth, async (req, res) => {
       station: user.station,
       created_at: user.createdAt
     });
-    console.log(user,'get me')
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
