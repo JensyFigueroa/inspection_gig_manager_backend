@@ -118,6 +118,101 @@ router.get("/dpu-tracker", async (req, res) => {
   }
 });
 
+// GET DPU History - Promedio por semana
+router.get('/dpu-history', async (req, res) => {
+  try {
+    const { year } = req.query;
+    const selectedYear = year ? parseInt(year) : new Date().getFullYear();
+    
+    // Obtener todos los gigs del año
+    const startOfYear = new Date(selectedYear, 0, 1);
+    const endOfYear = new Date(selectedYear, 11, 31, 23, 59, 59);
+    
+    const gigs = await Gig.find({
+      createdAt: { $gte: startOfYear, $lte: endOfYear }
+    });
+    
+    // Agrupar por semana del año (lunes a jueves como en dpu-tracker)
+    const weeklyData = {};
+    
+    gigs.forEach(gig => {
+      const date = new Date(gig.createdAt);
+      
+      // Calcular el lunes de esa semana
+      const dayOfWeek = date.getDay();
+      const diff = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+      const monday = new Date(date);
+      monday.setDate(date.getDate() + diff);
+      
+      // Crear clave única para la semana (formato: "1-Jan", "2-Jan", etc.)
+      const weekOfMonth = Math.ceil(monday.getDate() / 7);
+      const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+      const month = monthNames[monday.getMonth()];
+      const weekKey = `${weekOfMonth}-${month}`;
+      
+      if (!weeklyData[weekKey]) {
+        weeklyData[weekKey] = {
+          week: weekKey,
+          month: monday.getMonth(),
+          weekOfMonth: weekOfMonth,
+          totalGigs: 0,
+          trucks: new Set()
+        };
+      }
+      
+      weeklyData[weekKey].totalGigs++;
+      if (gig.truckNumber) {
+        weeklyData[weekKey].trucks.add(gig.truckNumber);
+      }
+    });
+    
+    // Convertir a array y calcular promedios
+    const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    
+    // Generar todas las semanas del año
+    const allWeeks = [];
+    monthNames.forEach((month, monthIndex) => {
+      for (let week = 1; week <= 4; week++) {
+        const weekKey = `${week}-${month}`;
+        const existingData = weeklyData[weekKey];
+        
+        if (existingData && existingData.trucks.size > 0) {
+          allWeeks.push({
+            week: weekKey,
+            monthIndex: monthIndex,
+            weekOfMonth: week,
+            avgDPU: Math.round((existingData.totalGigs / existingData.trucks.size) * 100) / 100,
+            totalGigs: existingData.totalGigs,
+            trucksCount: existingData.trucks.size
+          });
+        } else {
+          allWeeks.push({
+            week: weekKey,
+            monthIndex: monthIndex,
+            weekOfMonth: week,
+            avgDPU: null,
+            totalGigs: 0,
+            trucksCount: 0
+          });
+        }
+      }
+    });
+    
+    res.json({
+      year: selectedYear,
+      data: allWeeks
+    });
+  } catch (error) {
+    console.error('Error in dpu-history:', error);
+    res.status(500).json({ error: error.message });
+  }
+});
+
+
+
+
+
+
 // Create gig (QC only)
 router.post("/", auth, async (req, res) => {
   try {
