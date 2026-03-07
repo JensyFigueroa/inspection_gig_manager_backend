@@ -3,6 +3,7 @@ const router = express.Router();
 const Gig = require("../models/Gig");
 const Comment = require("../models/Comment");
 const auth = require("../middleware/auth");
+const Notification = require('../models/Notification');
 
 // GET DPU Tracker data (public endpoint for the tracker table)
 router.get("/dpu-tracker", async (req, res) => {
@@ -408,6 +409,34 @@ router.post("/:id/pause", auth, async (req, res) => {
     };
 
     await gig.save();
+    // Crear notificación si es missing-parts o depends-previous-station
+    if (reason === 'missing-parts' || reason === 'depends-previous-station') {
+      const notificationTitle = reason === 'missing-parts' 
+        ? '⚠️ Missing Part Alert' 
+        : '🔗 Gig Dependency Alert';
+      
+      const notificationMessage = reason === 'missing-parts'
+        ? `Gig paused due to missing parts. Truck: ${gig.truckNumber}, Station: ${gig.station}. Note: ${note || 'N/A'}`
+        : `Gig depends on previous station. Truck: ${gig.truckNumber}, Station: ${gig.station}. Note: ${note || 'N/A'}`;
+
+      const notification = new Notification({
+        type: reason,
+        title: notificationTitle,
+        message: notificationMessage,
+        station: gig.station,
+        targetRole: 'lead',
+        relatedGigId: gig._id,
+        truckNumber: gig.truckNumber,
+        workOrder: gig.workOrder,
+        pausedBy: {
+          workerNumber,
+          workerName
+        }
+      });
+
+      await notification.save();
+    }
+
     res.json(gig);
   } catch (error) {
     res.status(400).json({ error: error.message });

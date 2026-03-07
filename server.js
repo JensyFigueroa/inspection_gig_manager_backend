@@ -7,6 +7,9 @@ const authRoutes = require('./routes/auth');
 const gigRoutes = require('./routes/gigs');
 const operatorRoutes = require('./routes/operators');
 const usersRoutes = require('./routes/users');
+const tasksRoutes = require('./routes/tasks');
+const notificationsRoutes = require('./routes/notifications');
+
 
 const app = express();
 
@@ -25,6 +28,8 @@ app.use('/api/auth', authRoutes);
 app.use('/api/gigs', gigRoutes);
 app.use('/api/operators', operatorRoutes);
 app.use('/api/users', usersRoutes);
+app.use('/api/tasks', tasksRoutes);
+app.use('/api/notifications', notificationsRoutes);
 
 // Ruta de prueba
 app.get('/', (req, res) => {
