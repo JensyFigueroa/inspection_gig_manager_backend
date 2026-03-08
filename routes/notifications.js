@@ -14,8 +14,11 @@ router.get('/', auth, async (req, res) => {
         station: req.userStation,
         targetRole: 'lead'
       };
-    } else if (req.userRole === 'qc' || req.userRole === 'admin') {
-      // QC y Admin ven todas
+    } else if (req.userRole === 'admin') {
+      // Admin ve notificaciones dirigidas a admin
+      query = { targetRole: 'admin' };
+    } else if (req.userRole === 'qc') {
+      // QC ve todas las notificaciones
       query = {};
     } else {
       // Workers no ven notificaciones
@@ -31,6 +34,28 @@ router.get('/', auth, async (req, res) => {
     res.status(500).json({ error: error.message });
   }
 });
+
+// Get unread count
+router.get('/unread-count', auth, async (req, res) => {
+  try {
+    let query = { isRead: false };
+
+    if (req.userRole === 'lead') {
+      query.station = req.userStation;
+      query.targetRole = 'lead';
+    } else if (req.userRole === 'admin') {
+      query.targetRole = 'admin';
+    } else if (req.userRole !== 'qc') {
+      return res.json({ count: 0 });
+    }
+
+    const count = await Notification.countDocuments(query);
+    res.json({ count });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
 
 // Get unread count
 router.get('/unread-count', auth, async (req, res) => {

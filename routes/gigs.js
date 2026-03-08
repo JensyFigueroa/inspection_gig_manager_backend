@@ -4,6 +4,8 @@ const Gig = require("../models/Gig");
 const Comment = require("../models/Comment");
 const auth = require("../middleware/auth");
 const Notification = require('../models/Notification');
+const GigDescription = require('../models/GigDescription');
+
 
 // GET DPU Tracker data (public endpoint for the tracker table)
 router.get("/dpu-tracker", async (req, res) => {
@@ -210,10 +212,6 @@ router.get('/dpu-history', async (req, res) => {
 });
 
 
-
-
-
-
 // Create gig (QC only)
 router.post("/", auth, async (req, res) => {
   try {
@@ -225,14 +223,34 @@ router.post("/", auth, async (req, res) => {
       ...req.body,
       createdBy: req.userId,
     });
-    console.log(gig);
     await gig.save();
+
+    // Guardar descripción para autocompletado futuro
+    try {
+      const existingDesc = await GigDescription.findOne({
+        description: { $regex: `^${gig.description.trim()}$`, $options: 'i' }
+      });
+
+      if (existingDesc) {
+        existingDesc.usageCount += 1;
+        existingDesc.lastUsed = new Date();
+        await existingDesc.save();
+      } else {
+        await GigDescription.create({
+          description: gig.description.trim(),
+          station: gig.station
+        });
+      }
+    } catch (descError) {
+      console.log('Error saving description:', descError);
+    }
+
     res.status(201).json(gig);
   } catch (error) {
-    console.log("POST");
     res.status(400).json({ error: error.message });
   }
 });
+
 
 // Get gigs based on role
 router.get("/", auth, async (req, res) => {
@@ -269,21 +287,37 @@ router.get("/:id", auth, async (req, res) => {
       return res.status(404).json({ error: "Gig not found" });
     }
 
-    // Verify permissions
-    if (
-      (req.userRole === "worker" || req.userRole === "lead") &&
-      gig.station !== req.userStation
-    ) {
-      return res
-        .status(403)
-        .json({ error: "Do not have permission to view this gig" });
+    // QC y Admin pueden ver todos los gigs
+    if (req.userRole === 'qc' || req.userRole === 'admin') {
+      return res.json(gig);
     }
 
-    res.json(gig);
+    // Lead puede ver gigs de su estación O gigs que generaron notificaciones para su estación
+    if (req.userRole === 'lead') {
+      if (gig.station === req.userStation) {
+        return res.json(gig);
+      }
+      // Verificar si hay una notificación para este lead relacionada con este gig
+      const notification = await Notification.findOne({
+        relatedGigId: gig._id,
+        station: req.userStation
+      });
+      if (notification) {
+        return res.json(gig);
+      }
+    }
+
+    // Worker solo puede ver gigs de su estación
+    if (req.userRole === 'worker' && gig.station === req.userStation) {
+      return res.json(gig);
+    }
+
+    return res.status(403).json({ error: "Do not have permission to view this gig" });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
+
 
 // Start  gig (Worker/Lead)
 router.post("/:id/start", auth, async (req, res) => {
@@ -379,10 +413,18 @@ router.post("/:id/complete", auth, async (req, res) => {
 // Pause gig (Worker/Lead)
 router.post("/:id/pause", auth, async (req, res) => {
   try {
-    const { workerNumber, workerName, reason, note } = req.body;
+    const { workerNumber, workerName, reason, note, dependsOnStation } = req.body;
 
     if (!workerNumber || !workerName || !reason) {
       return res.status(400).json({ error: "Incomplete pausing information" });
+    }
+
+    if (reason === 'depends-previous-station' && !dependsOnStation) {
+      return res.status(400).json({ error: "Please select the station this task depends on" });
+    }
+
+    if (reason === 'missing-parts' && !note) {
+      return res.status(400).json({ error: "Please describe the missing part" });
     }
 
     const gig = await Gig.findById(req.params.id);
@@ -392,9 +434,7 @@ router.post("/:id/pause", auth, async (req, res) => {
     }
 
     if (gig.station !== req.userStation && req.userRole !== "qc") {
-      return res
-        .status(403)
-        .json({ error: "Do not have permission to pause this gig" });
+      return res.status(403).json({ error: "Do not have permission to pause this gig" });
     }
 
     gig.status = "paused";
@@ -408,23 +448,32 @@ router.post("/:id/pause", auth, async (req, res) => {
       pausedAt: new Date(),
     };
 
-    await gig.save();
-    // Crear notificación si es missing-parts o depends-previous-station
-    if (reason === 'missing-parts' || reason === 'depends-previous-station') {
-      const notificationTitle = reason === 'missing-parts' 
-        ? '⚠️ Missing Part Alert' 
-        : '🔗 Gig Dependency Alert';
+    // Agregar a la lista de missing parts si es por missing-parts
+    if (reason === 'missing-parts' && note) {
+      if (!gig.missingParts) {
+        gig.missingParts = [];
+      }
       
-      const notificationMessage = reason === 'missing-parts'
-        ? `Gig paused due to missing parts. Truck: ${gig.truckNumber}, Station: ${gig.station}. Note: ${note || 'N/A'}`
-        : `Gig depends on previous station. Truck: ${gig.truckNumber}, Station: ${gig.station}. Note: ${note || 'N/A'}`;
+      gig.missingParts.push({
+        partName: note, // La descripción del missing part
+        partNumber: '',
+        quantity: 1,
+        notes: '',
+        addedAt: new Date(),
+        addedBy: {
+          workerNumber,
+          workerName
+        },
+        status: 'pending'
+      });
+    }
 
-      const notification = new Notification({
+    await gig.save();
+
+    // Crear notificación
+    if (reason === 'missing-parts' || reason === 'depends-previous-station') {
+      let notificationData = {
         type: reason,
-        title: notificationTitle,
-        message: notificationMessage,
-        station: gig.station,
-        targetRole: 'lead',
         relatedGigId: gig._id,
         truckNumber: gig.truckNumber,
         workOrder: gig.workOrder,
@@ -432,8 +481,21 @@ router.post("/:id/pause", auth, async (req, res) => {
           workerNumber,
           workerName
         }
-      });
+      };
 
+      if (reason === 'missing-parts') {
+        notificationData.title = '⚠️ Missing Part Alert';
+        notificationData.message = `Missing Part: "${note}". Truck: ${gig.truckNumber}, Station: ${gig.station}`;
+        notificationData.station = gig.station;
+        notificationData.targetRole = 'admin';
+      } else if (reason === 'depends-previous-station') {
+        notificationData.title = '🔗 Task Dependency Alert';
+        notificationData.message = `Gig in ${gig.station} is waiting for your station (${dependsOnStation}). Truck: ${gig.truckNumber}. Note: ${note || 'N/A'}`;
+        notificationData.station = dependsOnStation;
+        notificationData.targetRole = 'lead';
+      }
+
+      const notification = new Notification(notificationData);
       await notification.save();
     }
 
@@ -442,6 +504,8 @@ router.post("/:id/pause", auth, async (req, res) => {
     res.status(400).json({ error: error.message });
   }
 });
+
+
 
 // Approved gig (QC)
 router.post("/:id/approved", auth, async (req, res) => {
@@ -592,6 +656,91 @@ router.get("/:id/comments", auth, async (req, res) => {
     res.json(comments);
   } catch (error) {
     res.status(500).json({ error: error.message });
+  }
+});
+
+// Get all missing parts for a truck
+router.get('/missing-parts/:truckNumber', auth, async (req, res) => {
+  try {
+    const { truckNumber } = req.params;
+
+    // Solo admin y QC pueden ver todas las missing parts
+    if (req.userRole !== 'admin' && req.userRole !== 'qc') {
+      return res.status(403).json({ error: 'No permission to view missing parts' });
+    }
+
+    const gigs = await Gig.find({
+      truckNumber,
+      'missingParts.0': { $exists: true }
+    });
+
+    const tasks = await Task.find({
+      truckNumber,
+      'missingParts.0': { $exists: true }
+    });
+
+    const allMissingParts = [];
+
+    gigs.forEach(gig => {
+      gig.missingParts.forEach(part => {
+        allMissingParts.push({
+          ...part.toObject(),
+          sourceType: 'gig',
+          sourceId: gig._id,
+          station: gig.station,
+          gigDescription: gig.description
+        });
+      });
+    });
+
+    tasks.forEach(task => {
+      task.missingParts.forEach(part => {
+        allMissingParts.push({
+          ...part.toObject(),
+          sourceType: 'task',
+          sourceId: task._id,
+          station: task.station,
+          taskName: task.taskName
+        });
+      });
+    });
+
+    res.json({
+      truckNumber,
+      totalParts: allMissingParts.length,
+      parts: allMissingParts.sort((a, b) => new Date(b.addedAt) - new Date(a.addedAt))
+    });
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Update missing part status
+router.put('/missing-parts/:gigId/:partId', auth, async (req, res) => {
+  try {
+    if (req.userRole !== 'admin' && req.userRole !== 'qc') {
+      return res.status(403).json({ error: 'No permission to update missing parts' });
+    }
+
+    const { gigId, partId } = req.params;
+    const { status } = req.body;
+
+    const gig = await Gig.findById(gigId);
+    if (!gig) {
+      return res.status(404).json({ error: 'Gig not found' });
+    }
+
+    const partIndex = gig.missingParts.findIndex(p => p._id.toString() === partId);
+    if (partIndex === -1) {
+      return res.status(404).json({ error: 'Part not found' });
+    }
+
+    gig.missingParts[partIndex].status = status;
+    await gig.save();
+
+    res.json(gig);
+  } catch (error) {
+    res.status(400).json({ error: error.message });
   }
 });
 

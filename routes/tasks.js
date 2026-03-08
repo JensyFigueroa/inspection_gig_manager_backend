@@ -49,14 +49,32 @@ router.get('/:id', auth, async (req, res) => {
       return res.status(404).json({ error: 'Task not found' });
     }
 
-    if (
-      (req.userRole === 'worker' || req.userRole === 'lead') &&
-      task.station !== req.userStation
-    ) {
-      return res.status(403).json({ error: 'No permission to view this task' });
+    // QC y Admin pueden ver todos los tasks
+    if (req.userRole === 'qc' || req.userRole === 'admin') {
+      return res.json(task);
     }
 
-    res.json(task);
+    // Lead puede ver tasks de su estación O tasks que generaron notificaciones para su estación
+    if (req.userRole === 'lead') {
+      if (task.station === req.userStation) {
+        return res.json(task);
+      }
+      // Verificar si hay una notificación para este lead relacionada con este task
+      const notification = await Notification.findOne({
+        relatedTaskId: task._id,
+        station: req.userStation
+      });
+      if (notification) {
+        return res.json(task);
+      }
+    }
+
+    // Worker solo puede ver tasks de su estación
+    if (req.userRole === 'worker' && task.station === req.userStation) {
+      return res.json(task);
+    }
+
+    return res.status(403).json({ error: 'No permission to view this task' });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
@@ -143,10 +161,15 @@ router.post('/:id/complete', auth, async (req, res) => {
 // Pause task (Worker/Lead) - CON NOTIFICACIÓN
 router.post('/:id/pause', auth, async (req, res) => {
   try {
-    const { workerNumber, workerName, reason, note } = req.body;
+    const { workerNumber, workerName, reason, note, dependsOnStation } = req.body;
 
     if (!workerNumber || !workerName || !reason) {
       return res.status(400).json({ error: 'Incomplete pausing information' });
+    }
+
+    // Validar que se envíe la estación cuando depende de otra
+    if (reason === 'depends-previous-station' && !dependsOnStation) {
+      return res.status(400).json({ error: 'Please select the station this task depends on' });
     }
 
     const task = await Task.findById(req.params.id);
@@ -172,22 +195,10 @@ router.post('/:id/pause', auth, async (req, res) => {
 
     await task.save();
 
-    // Crear notificación si es missing-parts o depends-previous-station
+    // Crear notificación según el tipo de pausa
     if (reason === 'missing-parts' || reason === 'depends-previous-station') {
-      const notificationTitle = reason === 'missing-parts' 
-        ? '⚠️ Missing Part Alert' 
-        : '🔗 Task Dependency Alert';
-      
-      const notificationMessage = reason === 'missing-parts'
-        ? `Task "${task.taskName}" paused due to missing parts. Truck: ${task.truckNumber}, Station: ${task.station}`
-        : `Task "${task.taskName}" depends on previous station. Truck: ${task.truckNumber}, Station: ${task.station}`;
-
-      const notification = new Notification({
+      let notificationData = {
         type: reason,
-        title: notificationTitle,
-        message: notificationMessage,
-        station: task.station,
-        targetRole: 'lead',
         relatedTaskId: task._id,
         truckNumber: task.truckNumber,
         workOrder: task.workOrder,
@@ -195,8 +206,23 @@ router.post('/:id/pause', auth, async (req, res) => {
           workerNumber,
           workerName
         }
-      });
+      };
 
+      if (reason === 'missing-parts') {
+        // Missing parts → Notificar al ADMIN
+        notificationData.title = '⚠️ Missing Part Alert (Task)';
+        notificationData.message = `Task "${task.taskName}" paused due to missing parts. Truck: ${task.truckNumber}, Station: ${task.station}. Note: ${note || 'N/A'}`;
+        notificationData.station = task.station;
+        notificationData.targetRole = 'admin';
+      } else if (reason === 'depends-previous-station') {
+        // Depends on station → Notificar al LEAD de esa estación
+        notificationData.title = '🔗 Task Dependency Alert';
+        notificationData.message = `Task "${task.taskName}" in ${task.station} is waiting for your station (${dependsOnStation}). Truck: ${task.truckNumber}. Note: ${note || 'N/A'}`;
+        notificationData.station = dependsOnStation;
+        notificationData.targetRole = 'lead';
+      }
+
+      const notification = new Notification(notificationData);
       await notification.save();
     }
 
@@ -205,6 +231,7 @@ router.post('/:id/pause', auth, async (req, res) => {
     res.status(400).json({ error: error.message });
   }
 });
+
 
 // Approve task (QC)
 router.post('/:id/approved', auth, async (req, res) => {

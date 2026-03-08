@@ -9,7 +9,8 @@ const operatorRoutes = require('./routes/operators');
 const usersRoutes = require('./routes/users');
 const tasksRoutes = require('./routes/tasks');
 const notificationsRoutes = require('./routes/notifications');
-
+const suggestionsRoutes = require('./routes/suggestions');
+const efficiencyRoutes = require('./routes/efficiency');
 
 const app = express();
 
@@ -30,6 +31,10 @@ app.use('/api/operators', operatorRoutes);
 app.use('/api/users', usersRoutes);
 app.use('/api/tasks', tasksRoutes);
 app.use('/api/notifications', notificationsRoutes);
+app.use('/api/suggestions', suggestionsRoutes);
+app.use('/api/efficiency', efficiencyRoutes);
+
+
 
 // Ruta de prueba
 app.get('/', (req, res) => {
