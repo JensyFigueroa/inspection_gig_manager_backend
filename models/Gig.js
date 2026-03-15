@@ -1,133 +1,132 @@
-const mongoose = require("mongoose");
+const mongoose = require('mongoose');
 
 const gigSchema = new mongoose.Schema({
   station: {
     type: String,
     required: true,
-    trim: true,
+    trim: true
   },
   description: {
     type: String,
-    required: true,
+    required: true
   },
   truckNumber: {
     type: String,
     trim: true,
-    required: true,
+    required: true
   },
   customerName: {
     type: String,
     trim: true,
-    required: true,
+    required: true
   },
   salesEng: {
     type: String,
     trim: true,
-    required: true,
+    required: true
   },
   workOrder: {
     type: String,
-    trim: true,
+    trim: true
   },
   status: {
     type: String,
-    enum: ["pending", "in-progress", "completed", "paused"],
-    default: "pending",
+    enum: ['pending', 'in-progress', 'completed', 'paused'],
+    default: 'pending'
   },
   inspectorId: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "Inspector",
+    ref: 'Inspector'
   },
 
-  inspectionStatus: {
+  inspectionStatus:{
     type: String,
-    enum: ["", "approved", "rejected"],
-    default: "",
+    enum: ['','approved', 'rejected'],
+    default: ''
   },
   // Information about who started the gig
   approvedBy: {
-    inspectorId: mongoose.Schema.Types.ObjectId,
-    approvedAt: Date,
+    inspectorId:  mongoose.Schema.Types.ObjectId,
+    approvedAt: Date
   },
   // Information about who started the gig
   startedBy: {
     workerNumber: String,
     workerName: String,
-    startedAt: Date,
+    startedAt: Date
   },
   // Information about who completed the gig
   completedBy: {
     workerNumber: String,
     workerName: String,
-    completedAt: Date,
+    completedAt: Date
   },
   // Information about pausing the gig
   pausedInfo: {
     reason: {
       type: String,
-      enum: ["missing-parts", "depends-previous-station", "other"],
+      enum: ['missing-parts', 'depends-previous-station', 'other']
     },
     note: String,
     pausedBy: {
       workerNumber: String,
-      workerName: String,
+      workerName: String
     },
-    pausedAt: Date,
+    pausedAt: Date
   },
-
-  missingParts: [
-    {
-      partName: {
-        type: String,
-        required: true,
-      },
-      partNumber: String,
-      quantity: {
-        type: Number,
-        default: 1,
-      },
-      notes: String,
-      addedAt: {
-        type: Date,
-        default: Date.now,
-      },
-      addedBy: {
-        workerNumber: String,
-        workerName: String,
-      },
-      status: {
-        type: String,
-        enum: ["pending", "ordered", "received"],
-        default: "pending",
-      },
+  // Missing parts list
+  missingParts: [{
+    partNumber: {
+      type: String,
+      default: ''
     },
-  ],
-
+    partName: {
+      type: String,
+      required: true
+    },
+    quantity: {
+      type: Number,
+      default: 1
+    },
+    notes: String,
+    addedAt: {
+      type: Date,
+      default: Date.now
+    },
+    addedBy: {
+      workerNumber: String,
+      workerName: String
+    },
+    status: {
+      type: String,
+      enum: ['pending', 'ordered', 'received'],
+      default: 'pending'
+    }
+  }],
   employeeNumber: {
     type: Number,
   },
-  photos: [
-    {
-      type: String,
-    },
-  ],
+  photos: [{
+    type: String
+  }],
   createdBy: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: "User",
-    required: true,
+    ref: 'User',
+    required: true
   },
   createdAt: {
     type: Date,
-    default: Date.now,
+    default: Date.now
   },
   updatedAt: {
     type: Date,
-    default: Date.now,
-  },
+    default: Date.now
+  }
 });
 
-gigSchema.pre("save", function () {
+gigSchema.pre('save', function() {
   this.updatedAt = Date.now();
+  
 });
 
-module.exports = mongoose.model("Gig", gigSchema);
+module.exports = mongoose.model('Gig', gigSchema);
