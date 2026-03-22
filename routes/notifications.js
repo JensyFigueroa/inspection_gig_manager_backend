@@ -3,31 +3,32 @@ const router = express.Router();
 const Notification = require('../models/Notification');
 const auth = require('../middleware/auth');
 
-// Get notifications for user (based on role and station)
+// ============================================
+// GET notifications for user (based on role and station)
+// ============================================
 router.get('/', auth, async (req, res) => {
   try {
     let query = {};
 
     if (req.userRole === 'lead') {
-      // Lead solo ve notificaciones de su estación
       query = {
         station: req.userStation,
         targetRole: 'lead'
       };
     } else if (req.userRole === 'admin') {
-      // Admin ve notificaciones dirigidas a admin
       query = { targetRole: 'admin' };
     } else if (req.userRole === 'qc') {
-      // QC ve todas las notificaciones
       query = {};
     } else {
-      // Workers no ven notificaciones
       return res.json([]);
     }
 
+    // OPTIMIZADO: usar lean() y limitar campos
     const notifications = await Notification.find(query)
+      .select('type title message station isRead createdAt truckNumber workOrder')
       .sort({ createdAt: -1 })
-      .limit(50);
+      .limit(50)
+      .lean();
 
     res.json(notifications);
   } catch (error) {
@@ -35,7 +36,9 @@ router.get('/', auth, async (req, res) => {
   }
 });
 
-// Get unread count
+// ============================================
+// GET unread count - OPTIMIZADO (SOLO UNA VEZ, NO DUPLICADO)
+// ============================================
 router.get('/unread-count', auth, async (req, res) => {
   try {
     let query = { isRead: false };
@@ -49,64 +52,51 @@ router.get('/unread-count', auth, async (req, res) => {
       return res.json({ count: 0 });
     }
 
+    // OPTIMIZADO: countDocuments es más eficiente
     const count = await Notification.countDocuments(query);
+    
+    // Cache header para reducir llamadas
+    res.set('Cache-Control', 'private, max-age=30');
     res.json({ count });
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
 });
 
-
-// Get unread count
-router.get('/unread-count', auth, async (req, res) => {
-  try {
-    let query = { isRead: false };
-
-    if (req.userRole === 'lead') {
-      query.station = req.userStation;
-      query.targetRole = 'lead';
-    } else if (req.userRole !== 'qc' && req.userRole !== 'admin') {
-      return res.json({ count: 0 });
-    }
-
-    const count = await Notification.countDocuments(query);
-    res.json({ count });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
+// ============================================
 // Mark notification as read
+// ============================================
 router.put('/:id/read', auth, async (req, res) => {
   try {
-    const notification = await Notification.findById(req.params.id);
+    const notification = await Notification.findByIdAndUpdate(
+      req.params.id,
+      {
+        $set: { isRead: true },
+        $push: { readBy: { userId: req.userId, readAt: new Date() } }
+      },
+      { new: true }
+    );
 
     if (!notification) {
       return res.status(404).json({ error: 'Notification not found' });
     }
 
-    notification.isRead = true;
-    notification.readBy.push({
-      userId: req.userId,
-      readAt: new Date()
-    });
-
-    await notification.save();
     res.json(notification);
   } catch (error) {
     res.status(400).json({ error: error.message });
   }
 });
 
+// ============================================
 // Mark all as read
+// ============================================
 router.put('/mark-all-read', auth, async (req, res) => {
   try {
-    let query = {};
+    let query = { isRead: false };
 
     if (req.userRole === 'lead') {
-      query = { station: req.userStation, targetRole: 'lead', isRead: false };
-    } else if (req.userRole === 'qc' || req.userRole === 'admin') {
-      query = { isRead: false };
+      query.station = req.userStation;
+      query.targetRole = 'lead';
     }
 
     await Notification.updateMany(query, {
@@ -120,7 +110,9 @@ router.put('/mark-all-read', auth, async (req, res) => {
   }
 });
 
+// ============================================
 // Delete notification
+// ============================================
 router.delete('/:id', auth, async (req, res) => {
   try {
     if (req.userRole !== 'qc' && req.userRole !== 'admin') {

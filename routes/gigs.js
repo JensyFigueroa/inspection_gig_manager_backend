@@ -390,23 +390,34 @@ router.post("/", auth, async (req, res) => {
 });
 
 
-// Get gigs based on role
+// Get gigs based on role - OPTIMIZADO
 router.get("/", auth, async (req, res) => {
   try {
     let query = {};
 
     if (req.userRole === "qc") {
       query = {};
-    }
-    else if (req.userRole === "lead" || req.userRole === "worker") {
+    } else if (req.userRole === "lead" || req.userRole === "worker") {
       query = { station: req.userStation };
     }
 
-    const gigs = await Gig.find(query).sort({ createdAt: -1 });
+    // OPTIMIZADO: 
+    // 1. Excluir fotos (son pesadas) en listado
+    // 2. Usar lean() para mejor rendimiento
+    // 3. Limitar resultados
+    const gigs = await Gig.find(query)
+      .select('-photos -missingParts')
+      .sort({ createdAt: -1 })
+      .limit(200)
+      .lean();
 
-    const [comments] = await Promise.all([
-      Comment.find({ gigId: { $in: gigs.map((g) => g._id) } }),
-    ]);
+    // Obtener comentarios solo para los gigs encontrados
+    const gigIds = gigs.map(g => g._id);
+    
+    const comments = await Comment.find({ gigId: { $in: gigIds } })
+      .select('gigId text authorName createdAt')
+      .sort({ createdAt: -1 })
+      .lean();
 
     res.json({ gigs, comments });
   } catch (error) {
